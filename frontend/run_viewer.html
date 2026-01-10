@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Runs — Reckoning Machine</title>
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+    <header class="site-header">
+        <div class="container header-inner">
+            <div class="brand">
+                <h1 class="brand-title">Runs</h1>
+                <div class="brand-subtitle">Execute manifests and inspect audited results.</div>
+            </div>
+            <nav class="nav">
+                <a href="/">Home</a>
+                <a href="/task_editor.html">Tasks</a>
+                <a href="/manifest_editor.html">Manifests</a>
+                <a href="/run_viewer.html">Runs</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <div class="card-title">Run a Manifest</div>
+
+            <div class="grid-2">
+                <div>
+                    <label class="field-label">Manifest</label>
+                    <select id="manifest-select" class="field"></select>
+                    <div class="muted" id="manifest-meta" style="margin-top:6px;"></div>
+                </div>
+                <div>
+                    <label class="field-label">Initiated by</label>
+                    <input id="initiated-by" class="field" type="text" placeholder="e.g., web-ui" value="web-ui" />
+                    <div class="muted" style="margin-top:6px;">Runner is synchronous; the API will return after
+                        completion.</div>
+                </div>
+            </div>
+
+            <div class="actions" style="margin-top:12px;">
+                <button class="btn" id="run-btn">Run manifest</button>
+                <button class="btn btn-secondary" id="refresh-btn">Refresh</button>
+                <div id="run-msg" class="muted"></div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-title">Runs</div>
+            <div class="table-wrap">
+                <table class="table" id="runs-table">
+                    <thead>
+                        <tr>
+                            <th>Started</th>
+                            <th>Status</th>
+                            <th>Manifest</th>
+                            <th>Run ID</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="note">Click a run to load its step runs below.</div>
+        </section>
+
+        <section class="card">
+            <div class="card-title">Step Runs</div>
+            <div id="steps-msg" class="muted" style="margin-bottom:10px;"></div>
+
+            <div class="table-wrap">
+                <table class="table" id="steps-table">
+                    <thead>
+                        <tr>
+                            <th>Step</th>
+                            <th>Status</th>
+                            <th>Started</th>
+                            <th>Ended</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div style="margin-top:12px;">
+                <label class="field-label">Selected step detail</label>
+                <textarea id="step-detail" class="field" rows="12" readonly></textarea>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        async function api(path, opts) {
+            const res = await fetch(path, opts);
+            const text = await res.text();
+            let data = null;
+            try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+            if (!res.ok) {
+                const msg = (data && data.detail) ? data.detail : text;
+                throw new Error(msg || ("HTTP " + res.status));
+            }
+            return data;
+        }
+
+        function setText(id, txt) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = txt || "";
+        }
+
+        function escapeHtml(s) {
+            return String(s)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        function renderRuns(rows) {
+            const tbody = document.querySelector("#runs-table tbody");
+            tbody.innerHTML = "";
+            for (const r of rows) {
+                const tr = document.createElement("tr");
+                tr.className = "clickable";
+                tr.dataset.runId = r.id;
+                tr.innerHTML = `
+          <td>${escapeHtml(r.started_at || r.created_at || "")}</td>
+          <td><strong>${escapeHtml(r.status || "")}</strong></td>
+          <td class="mono">${escapeHtml(r.manifest_id || "")}</td>
+          <td class="mono">${escapeHtml(r.id || "")}</td>
+        `;
+                tbody.appendChild(tr);
+            }
+        }
+
+        function renderSteps(rows) {
+            const tbody = document.querySelector("#steps-table tbody");
+            tbody.innerHTML = "";
+            for (const r of rows) {
+                const tr = document.createElement("tr");
+                tr.className = "clickable";
+                tr.dataset.stepRunId = r.id;
+                tr.dataset.payload = JSON.stringify(r);
+                tr.innerHTML = `
+          <td class="mono">${escapeHtml(r.step_key || r.manifest_step_id || "")}</td>
+          <td><strong>${escapeHtml(r.status || "")}</strong></td>
+          <td>${escapeHtml(r.started_at || "")}</td>
+          <td>${escapeHtml(r.ended_at || "")}</td>
+        `;
+                tbody.appendChild(tr);
+            }
+        }
+
+        async function loadManifests() {
+            const manifests = await api("/api/manifests");
+            const sel = document.getElementById("manifest-select");
+            sel.innerHTML = "";
+            for (const m of manifests) {
+                const opt = document.createElement("option");
+                opt.value = m.id;
+                opt.textContent = `${m.name} (${m.id.slice(0, 8)}…)`;
+                sel.appendChild(opt);
+            }
+            return manifests;
+        }
+
+        async function loadSelectedManifestDetail() {
+            const id = document.getElementById("manifest-select").value;
+            if (!id) return;
+            const m = await api(`/api/manifests/${id}`);
+            setText("manifest-meta", `${m.name} — ${m.description || ""}`);
+        }
+
+        async function loadRuns() {
+            const runs = await api("/api/runs");
+            renderRuns(runs);
+            setText("run-msg", `${runs.length} run(s)`);
+        }
+
+        async function runManifest() {
+            setText("run-msg", "Running…");
+            const manifest_id = document.getElementById("manifest-select").value;
+            const initiated_by = document.getElementById("initiated-by").value.trim() || "web-ui";
+
+            const resp = await api("/api/runs", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ manifest_id, initiated_by })
+            });
+
+            setText("run-msg", `Completed. run_id=${resp.run_id || resp.id || ""}`);
+            await loadRuns();
+        }
+
+        async function loadRunSteps(runId) {
+            setText("steps-msg", `Loading steps for ${runId}…`);
+            const steps = await api(`/api/runs/${runId}/steps`);
+            renderSteps(steps);
+            setText("steps-msg", `${steps.length} step run(s) for ${runId}`);
+            document.getElementById("step-detail").value = "";
+        }
+
+        function wireTableClicks() {
+            document.getElementById("runs-table").addEventListener("click", (e) => {
+                const tr = e.target.closest("tr");
+                if (!tr || !tr.dataset.runId) return;
+                loadRunSteps(tr.dataset.runId).catch(err => setText("steps-msg", err.message));
+            });
+
+            document.getElementById("steps-table").addEventListener("click", (e) => {
+                const tr = e.target.closest("tr");
+                if (!tr || !tr.dataset.payload) return;
+                const payload = JSON.parse(tr.dataset.payload);
+                document.getElementById("step-detail").value = JSON.stringify(payload, null, 2);
+            });
+        }
+
+        async function refreshAll() {
+            await loadManifests();
+            await loadSelectedManifestDetail();
+            await loadRuns();
+        }
+
+        document.getElementById("manifest-select").addEventListener("change", () => loadSelectedManifestDetail().catch(err => setText("run-msg", err.message)));
+        document.getElementById("run-btn").addEventListener("click", () => runManifest().catch(err => setText("run-msg", err.message)));
+        document.getElementById("refresh-btn").addEventListener("click", () => refreshAll().catch(err => setText("run-msg", err.message)));
+
+        wireTableClicks();
+        refreshAll().catch(err => setText("run-msg", err.message));
+    </script>
+</body>
+
+</html>

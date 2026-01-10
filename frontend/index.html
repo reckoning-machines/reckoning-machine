@@ -1,24 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reckoning Machine</title>
-    <link rel="stylesheet" href="/styles.css">
-</head>
-<body>
-    <header>
-        <h1>Reckoning Machine</h1>
-        <nav>
-            <a href="#">Tasks</a> |
-            <a href="#">Manifests</a> |
-            <a href="#">Runs</a>
-        </nav>
-    </header>
-    <main>
-        <div id="status-box">Status: <span id="status-text">unknown</span></div>
-        <button id="health-btn">Check health</button>
-    </main>
-    <script src="/app.js"></script>
-</body>
-</html>
+body {
+font-family: Arial, sans-serif;
+background: #f7f7f9;
+margin: 0;
+padding: 0;
+}
+header {
+background: #23253a;
+color: #fff;
+padding: 1rem;
+}
+header h1 {
+margin: 0 0 0.5rem 0;
+}
+nav a {
+color: #ffff80;
+margin-right: 1em;
+text-decoration: none;
+font-weight: bold;
+}
+#status-box {
+background: #e6e6ff;
+border: 1px solid #bbb;
+margin: 2rem 0 1rem 0;
+padding: 1em;
+width: 250px;
+border-radius: 4px;
+}
+#health-btn {
+padding: 0.5em 1em;
+border-radius: 3px;
+border: 1px solid #23253a;
+background: #23253a;
+color: #fff;
+cursor: pointer;
+}
+#health-btn:hover {
+background: #6161a2;
+border-color: #6161a2;
+}

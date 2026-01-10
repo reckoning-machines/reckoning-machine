@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tasks — Reckoning Machine</title>
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+    <header class="site-header">
+        <div class="container header-inner">
+            <div class="brand">
+                <h1 class="brand-title">Tasks</h1>
+                <div class="brand-subtitle">Define units of work.</div>
+            </div>
+            <nav class="nav">
+                <a href="/">Home</a>
+                <a href="/task_editor.html">Tasks</a>
+                <a href="/manifest_editor.html">Manifests</a>
+                <a href="/run_viewer.html">Runs</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <div class="card-title">Create Task</div>
+
+            <div class="grid-2">
+                <div>
+                    <label class="field-label">Name</label>
+                    <input id="task-name" class="field" type="text" placeholder="e.g., gather_intel" />
+                </div>
+                <div>
+                    <label class="field-label">Description</label>
+                    <input id="task-desc" class="field" type="text" placeholder="Short description" />
+                </div>
+            </div>
+
+            <div style="margin-top:12px;">
+                <label class="field-label">Prompt template</label>
+                <textarea id="task-prompt" class="field" rows="6"
+                    placeholder="Write the prompt template here."></textarea>
+            </div>
+
+            <div style="margin-top:12px;">
+                <label class="field-label">Extract schema (JSON, optional)</label>
+                <textarea id="task-schema" class="field" rows="4" placeholder='{"required_keys":["result"]}'></textarea>
+            </div>
+
+            <div class="actions" style="margin-top:12px;">
+                <button class="btn" id="create-task-btn">Create task</button>
+                <div id="create-task-msg" class="muted"></div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-title">Tasks</div>
+            <div class="actions" style="margin-bottom:10px;">
+                <button class="btn btn-secondary" id="refresh-btn">Refresh</button>
+                <div id="load-msg" class="muted"></div>
+            </div>
+
+            <div class="table-wrap">
+                <table class="table" id="tasks-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>ID</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        async function api(path, opts) {
+            const res = await fetch(path, opts);
+            const text = await res.text();
+            let data = null;
+            try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+            if (!res.ok) {
+                const msg = (data && data.detail) ? data.detail : text;
+                throw new Error(msg || ("HTTP " + res.status));
+            }
+            return data;
+        }
+
+        function safeJsonParse(s) {
+            if (!s || !s.trim()) return null;
+            return JSON.parse(s);
+        }
+
+        function setText(id, txt) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = txt || "";
+        }
+
+        function renderTasks(rows) {
+            const tbody = document.querySelector("#tasks-table tbody");
+            tbody.innerHTML = "";
+            for (const r of rows) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+          <td><strong>${escapeHtml(r.name || "")}</strong></td>
+          <td>${escapeHtml(r.description || "")}</td>
+          <td class="mono">${escapeHtml(r.id || "")}</td>
+        `;
+                tbody.appendChild(tr);
+            }
+        }
+
+        function escapeHtml(s) {
+            return String(s)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        async function loadTasks() {
+            setText("load-msg", "Loading…");
+            const rows = await api("/api/tasks");
+            renderTasks(rows);
+            setText("load-msg", `${rows.length} task(s)`);
+        }
+
+        async function createTask() {
+            setText("create-task-msg", "");
+            const name = document.getElementById("task-name").value.trim();
+            const description = document.getElementById("task-desc").value.trim();
+            const prompt_template = document.getElementById("task-prompt").value;
+            const schemaRaw = document.getElementById("task-schema").value;
+
+            if (!name) {
+                setText("create-task-msg", "Name is required.");
+                return;
+            }
+
+            let extract_schema = null;
+            try {
+                extract_schema = safeJsonParse(schemaRaw);
+            } catch (e) {
+                setText("create-task-msg", "Extract schema must be valid JSON.");
+                return;
+            }
+
+            await api("/api/tasks", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, description, prompt_template, extract_schema })
+            });
+
+            setText("create-task-msg", "Created.");
+            document.getElementById("task-name").value = "";
+            document.getElementById("task-desc").value = "";
+            document.getElementById("task-prompt").value = "";
+            document.getElementById("task-schema").value = "";
+            await loadTasks();
+        }
+
+        document.getElementById("refresh-btn").addEventListener("click", loadTasks);
+        document.getElementById("create-task-btn").addEventListener("click", () => createTask().catch(e => setText("create-task-msg", e.message)));
+        loadTasks().catch(e => setText("load-msg", e.message));
+    </script>
+</body>
+
+</html>

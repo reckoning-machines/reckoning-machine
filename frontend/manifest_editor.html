@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manifests — Reckoning Machine</title>
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+
+<body>
+    <header class="site-header">
+        <div class="container header-inner">
+            <div class="brand">
+                <h1 class="brand-title">Manifests</h1>
+                <div class="brand-subtitle">Define explicit DAGs of tasks.</div>
+            </div>
+            <nav class="nav">
+                <a href="/">Home</a>
+                <a href="/task_editor.html">Tasks</a>
+                <a href="/manifest_editor.html">Manifests</a>
+                <a href="/run_viewer.html">Runs</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <div class="card-title">Create Manifest</div>
+
+            <div class="grid-2">
+                <div>
+                    <label class="field-label">Name</label>
+                    <input id="manifest-name" class="field" type="text" placeholder="e.g., demo_chain" />
+                </div>
+                <div>
+                    <label class="field-label">Description</label>
+                    <input id="manifest-desc" class="field" type="text" placeholder="Short description" />
+                </div>
+            </div>
+
+            <div class="actions" style="margin-top:12px;">
+                <button class="btn" id="create-manifest-btn">Create manifest</button>
+                <div id="create-manifest-msg" class="muted"></div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-title">Edit Steps</div>
+
+            <div class="grid-2">
+                <div>
+                    <label class="field-label">Manifest</label>
+                    <select id="manifest-select" class="field"></select>
+                    <div class="muted" id="manifest-meta" style="margin-top:6px;"></div>
+                </div>
+                <div>
+                    <label class="field-label">Available Tasks</label>
+                    <select id="task-select" class="field"></select>
+                    <div class="muted" style="margin-top:6px;">Add steps by clicking “Add step”. Then save.</div>
+                </div>
+            </div>
+
+            <div class="actions" style="margin-top:12px;">
+                <button class="btn btn-secondary" id="add-step-btn" type="button">Add step</button>
+                <button class="btn" id="save-steps-btn" type="button">Save steps</button>
+                <div id="steps-msg" class="muted"></div>
+            </div>
+
+            <div style="margin-top:12px;">
+                <label class="field-label">Steps (JSON)</label>
+                <textarea id="steps-json" class="field" rows="10"
+                    placeholder='[{"step_key":"s1","task_id":"...","depends_on":[],"config":{},"order_index":1}]'></textarea>
+                <div class="note">This editor is intentionally explicit. Steps are replaced atomically on save.</div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-title">Manifests</div>
+            <div class="actions" style="margin-bottom:10px;">
+                <button class="btn btn-secondary" id="refresh-btn">Refresh</button>
+                <div id="load-msg" class="muted"></div>
+            </div>
+
+            <div class="table-wrap">
+                <table class="table" id="manifests-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Description</th>
+                            <th>ID</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        async function api(path, opts) {
+            const res = await fetch(path, opts);
+            const text = await res.text();
+            let data = null;
+            try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+            if (!res.ok) {
+                const msg = (data && data.detail) ? data.detail : text;
+                throw new Error(msg || ("HTTP " + res.status));
+            }
+            return data;
+        }
+
+        function setText(id, txt) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = txt || "";
+        }
+
+        function escapeHtml(s) {
+            return String(s)
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll('"', "&quot;")
+                .replaceAll("'", "&#039;");
+        }
+
+        function renderManifests(rows) {
+            const tbody = document.querySelector("#manifests-table tbody");
+            tbody.innerHTML = "";
+            for (const r of rows) {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+          <td><strong>${escapeHtml(r.name || "")}</strong></td>
+          <td>${escapeHtml(r.description || "")}</td>
+          <td class="mono">${escapeHtml(r.id || "")}</td>
+        `;
+                tbody.appendChild(tr);
+            }
+        }
+
+        async function loadTasks() {
+            const tasks = await api("/api/tasks");
+            const sel = document.getElementById("task-select");
+            sel.innerHTML = "";
+            for (const t of tasks) {
+                const opt = document.createElement("option");
+                opt.value = t.id;
+                opt.textContent = `${t.name} (${t.id.slice(0, 8)}…)`;
+                sel.appendChild(opt);
+            }
+            return tasks;
+        }
+
+        async function loadManifests() {
+            const manifests = await api("/api/manifests");
+            renderManifests(manifests);
+
+            const sel = document.getElementById("manifest-select");
+            sel.innerHTML = "";
+            for (const m of manifests) {
+                const opt = document.createElement("option");
+                opt.value = m.id;
+                opt.textContent = `${m.name} (${m.id.slice(0, 8)}…)`;
+                sel.appendChild(opt);
+            }
+            setText("load-msg", `${manifests.length} manifest(s)`);
+            return manifests;
+        }
+
+        async function createManifest() {
+            setText("create-manifest-msg", "");
+            const name = document.getElementById("manifest-name").value.trim();
+            const description = document.getElementById("manifest-desc").value.trim();
+            if (!name) {
+                setText("create-manifest-msg", "Name is required.");
+                return;
+            }
+            await api("/api/manifests", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name, description })
+            });
+            setText("create-manifest-msg", "Created.");
+            document.getElementById("manifest-name").value = "";
+            document.getElementById("manifest-desc").value = "";
+            await refreshAll();
+        }
+
+        function defaultStep(step_key, task_id, order_index, depends_on) {
+            return {
+                step_key,
+                task_id,
+                depends_on: depends_on || [],
+                chaining: null,
+                config: {},
+                order_index
+            };
+        }
+
+        function getStepsJson() {
+            const raw = document.getElementById("steps-json").value.trim();
+            if (!raw) return [];
+            return JSON.parse(raw);
+        }
+
+        function setStepsJson(steps) {
+            document.getElementById("steps-json").value = JSON.stringify(steps, null, 2);
+        }
+
+        async function loadSelectedManifestDetail() {
+            const id = document.getElementById("manifest-select").value;
+            if (!id) return;
+            const m = await api(`/api/manifests/${id}`);
+            setText("manifest-meta", `${m.name} — ${m.description || ""}`);
+            setStepsJson(m.steps || []);
+        }
+
+        async function addStep() {
+            setText("steps-msg", "");
+            const taskId = document.getElementById("task-select").value;
+            const steps = getStepsJson();
+
+            const nextIndex = steps.length + 1;
+            const step_key = `s${nextIndex}`;
+
+            let depends_on = [];
+            if (steps.length > 0) {
+                depends_on = [steps[steps.length - 1].step_key];
+            }
+
+            steps.push(defaultStep(step_key, taskId, nextIndex, depends_on));
+            setStepsJson(steps);
+            setText("steps-msg", "Step added. Save steps to persist.");
+        }
+
+        async function saveSteps() {
+            setText("steps-msg", "");
+            const manifestId = document.getElementById("manifest-select").value;
+            if (!manifestId) {
+                setText("steps-msg", "Select a manifest.");
+                return;
+            }
+
+            let steps;
+            try {
+                steps = getStepsJson();
+            } catch (e) {
+                setText("steps-msg", "Steps JSON is invalid.");
+                return;
+            }
+
+            await api(`/api/manifests/${manifestId}/steps`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(steps)
+            });
+
+            setText("steps-msg", "Saved.");
+            await loadSelectedManifestDetail();
+        }
+
+        async function refreshAll() {
+            setText("load-msg", "Loading…");
+            await loadTasks();
+            await loadManifests();
+            await loadSelectedManifestDetail();
+        }
+
+        document.getElementById("refresh-btn").addEventListener("click", () => refreshAll().catch(e => setText("load-msg", e.message)));
+        document.getElementById("create-manifest-btn").addEventListener("click", () => createManifest().catch(e => setText("create-manifest-msg", e.message)));
+        document.getElementById("add-step-btn").addEventListener("click", () => addStep());
+        document.getElementById("save-steps-btn").addEventListener("click", () => saveSteps().catch(e => setText("steps-msg", e.message)));
+        document.getElementById("manifest-select").addEventListener("change", () => loadSelectedManifestDetail().catch(e => setText("steps-msg", e.message)));
+
+        refreshAll().catch(e => setText("load-msg", e.message));
+    </script>
+</body>
+
+</html>

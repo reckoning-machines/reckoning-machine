@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.runner import execute_manifest, resume_run
 from app.db import models, schemas
 from app.db.session import get_db
+import json
 
 router = APIRouter()
 
@@ -103,6 +104,11 @@ def attest_compute_step(
         {"manifest_step_id": step_run.manifest_step_id},
     ).scalar_one_or_none()
 
+    if isinstance(contract_snapshot, dict) or isinstance(contract_snapshot, list):
+        contract_snapshot = json.dumps(contract_snapshot)
+    elif contract_snapshot is not None and not isinstance(contract_snapshot, str):
+        contract_snapshot = json.dumps(contract_snapshot)
+
     attestation_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
 
@@ -113,7 +119,7 @@ def attest_compute_step(
                 insert into compute_attestations
                 (id, step_run_id, attested_by, attested_at, outcome, notes, contract_snapshot)
                 values
-                (:id, :step_run_id, :attested_by, :attested_at, :outcome, :notes, :contract_snapshot)
+                (:id, :step_run_id, :attested_by, :attested_at, :outcome, :notes, (:contract_snapshot)::jsonb)
                 """
             ),
             {

@@ -58,7 +58,7 @@ class ManifestStepBase(BaseModel):
     step_type: Optional[str] = None
     compute_contract: Optional[dict] = None
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def validate_compute_contract(cls, values):
         raw_step_type = values.get("step_type")
         step_type = (raw_step_type or "").strip().lower() or "task"

@@ -8,14 +8,6 @@ app = FastAPI(title="Reckoning Machine")
 
 
 # -----------------------------
-# Static frontend mount
-# -----------------------------
-FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
-if FRONTEND_DIR.exists():
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-
-
-# -----------------------------
 # Health + version
 # -----------------------------
 @app.get("/health")
@@ -57,3 +49,11 @@ from app.api.runs import router as runs_router
 app.include_router(tasks_router, prefix="/api")
 app.include_router(manifests_router, prefix="/api")
 app.include_router(runs_router, prefix="/api")
+
+
+# -----------------------------
+# Static frontend mount (MUST be last)
+# -----------------------------
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+if FRONTEND_DIR.exists():
+    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

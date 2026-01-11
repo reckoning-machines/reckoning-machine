@@ -26,7 +26,7 @@ class TaskRead(TaskBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --- Manifest Schemas ---
 class ManifestBase(BaseModel):
@@ -44,7 +44,7 @@ class ManifestRead(ManifestBase):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 # --- Manifest Step Schemas ---
 class ManifestStepBase(BaseModel):
@@ -101,7 +101,7 @@ class ManifestStepRead(ManifestStepBase):
     manifest_id: UUID
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ComputeArtifactIn(BaseModel):
@@ -117,7 +117,7 @@ class ComputeAttestIn(BaseModel):
     notes: Optional[str] = None
     artifacts: List[ComputeArtifactIn] = Field(default_factory=list)
 
-    @root_validator
+    @root_validator(skip_on_failure=True)
     def _validate_outcome(cls, values):
         outcome = (values.get("outcome") or "").strip().upper()
         values["outcome"] = outcome

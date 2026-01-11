@@ -55,7 +55,6 @@ def execute_manifest(manifest_id: UUID, db: Session, initiated_by: str | None = 
     for step in steps:
         depends_on = step.depends_on or []
 
-        # Deterministic dependency gating: must have all deps SUCCESS
         if any(step_status.get(dep) != "SUCCESS" for dep in depends_on):
             step_status[step.step_key] = "SKIPPED"
             _record_skipped_step(db=db, dag_run_id=dag_run.id, step=step)
@@ -90,7 +89,6 @@ def execute_manifest(manifest_id: UUID, db: Session, initiated_by: str | None = 
             "Return STRICT JSON only with keys: decision_rationale, output_json."
         )
 
-        # Create step run first so artifacts can be linked deterministically
         step_run = models.DagStepRun(
             dag_run_id=dag_run.id,
             manifest_step_id=step.id,
@@ -103,7 +101,6 @@ def execute_manifest(manifest_id: UUID, db: Session, initiated_by: str | None = 
 
         llm_result = llm_complete(rendered_prompt)
 
-        # Always write LLM call artifact linked to this step run
         db.add(
             models.LLMCallArtifact(
                 step_run_id=step_run.id,
@@ -120,7 +117,6 @@ def execute_manifest(manifest_id: UUID, db: Session, initiated_by: str | None = 
         decision_rationale = parsed.get("decision_rationale")
         output_json = parsed.get("output_json")
 
-        # Deterministic policy enforcement (authoritative)
         policy_status, report_json = evaluate_policy(
             step=step,
             output_json=output_json,
@@ -135,7 +131,6 @@ def execute_manifest(manifest_id: UUID, db: Session, initiated_by: str | None = 
 
         step_status[step.step_key] = final_status
 
-        # Persist prompt artifact + parsed output artifact
         db.add(
             models.PromptArtifact(
                 step_run_id=step_run.id,
@@ -153,7 +148,6 @@ def execute_manifest(manifest_id: UUID, db: Session, initiated_by: str | None = 
             )
         )
 
-        # Finalize step run record
         step_run.status = final_status
         step_run.ended_at = _now_utc()
         step_run.decision_rationale = decision_rationale
@@ -162,7 +156,6 @@ def execute_manifest(manifest_id: UUID, db: Session, initiated_by: str | None = 
 
         db.commit()
 
-        # Only PASS outputs are allowed to chain forward
         if final_status == "SUCCESS" and canonical_output is not None:
             canonical_by_step_key[step.step_key] = canonical_output
 
@@ -201,6 +194,10 @@ def resume_run(run_id: UUID, db: Session, initiated_by: str | None = None) -> UU
         .all()
     )
 
+    for sr in step_runs:
+        if sr.manifest_step_id not in step_by_id:
+            raise ValueError("Manifest steps changed since run started")
+
     existing_by_step_key: dict[str, models.DagStepRun] = {}
     for sr in step_runs:
         ms = step_by_id.get(sr.manifest_step_id)
@@ -229,6 +226,8 @@ def resume_run(run_id: UUID, db: Session, initiated_by: str | None = None) -> UU
         existing = existing_by_step_key.get(step.step_key)
         if existing and existing.status in {"SUCCESS", "FAIL", "SKIPPED"}:
             continue
+        if existing and existing.status == "RUNNING":
+            raise ValueError("Run has an in-flight step; cannot resume deterministically")
 
         depends_on = step.depends_on or []
         if any(step_status.get(dep) != "SUCCESS" for dep in depends_on):

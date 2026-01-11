@@ -41,6 +41,8 @@ class ManifestStep(Base):
     )
     manifest = relationship("Manifest", backref="steps")
     task = relationship("Task")
+    step_type = Column(Text)
+    compute_contract = Column(JSONB)
 
 class DagRun(Base):
     __tablename__ = "dag_runs"

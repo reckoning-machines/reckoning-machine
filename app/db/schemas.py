@@ -115,16 +115,20 @@ class ComputeAttestIn(BaseModel):
     attested_by: str
     outcome: str
     notes: Optional[str] = None
-    artifacts: List[ComputeArtifactIn]
+    artifacts: List[ComputeArtifactIn] = Field(default_factory=list)
 
     @root_validator
     def _validate_outcome(cls, values):
-        outcome = values.get("outcome")
+        outcome = (values.get("outcome") or "").strip().upper()
+        values["outcome"] = outcome
+
         if outcome not in ("SUCCESS", "FAIL"):
             raise ValueError("outcome must be SUCCESS or FAIL")
+
         artifacts = values.get("artifacts")
         if artifacts is None:
             raise ValueError("artifacts field is required")
+
         return values
 
 

@@ -98,14 +98,10 @@ def attest_compute_step(
     if existing is not None:
         raise HTTPException(409, "compute attestation already exists for this step_run_id")
 
-    contract_snapshot = None
-    try:
-        contract_snapshot = db.execute(
-            text("select compute_contract from manifest_steps where id = :id"),
-            {"id": step_run.manifest_step_id},
-        ).scalar_one_or_none()
-    except Exception:
-        contract_snapshot = None
+    contract_snapshot = db.execute(
+        text("select compute_contract from manifest_steps where id = :manifest_step_id"),
+        {"manifest_step_id": step_run.manifest_step_id},
+    ).scalar_one_or_none()
 
     attestation_id = uuid.uuid4()
     now = datetime.now(timezone.utc)
@@ -130,39 +126,43 @@ def attest_compute_step(
                 "contract_snapshot": contract_snapshot,
             },
         )
+
+        for a in body.artifacts:
+            db.execute(
+                text(
+                    """
+                    insert into compute_artifacts
+                    (id, attestation_id, name, uri, sha256, bytes, created_at)
+                    values
+                    (:id, :attestation_id, :name, :uri, :sha256, :bytes, :created_at)
+                    """
+                ),
+                {
+                    "id": uuid.uuid4(),
+                    "attestation_id": attestation_id,
+                    "name": a.name,
+                    "uri": a.uri,
+                    "sha256": a.sha256,
+                    "bytes": a.bytes,
+                    "created_at": now,
+                },
+            )
+
+        step_run.status = body.outcome
+        step_run.ended_at = now
+
+        if body.outcome == "FAIL":
+            dag_run.status = "error"
+            dag_run.ended_at = now
+
+        db.commit()
+
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "compute attestation already exists for this step_run_id")
-
-    for a in body.artifacts:
-        db.execute(
-            text(
-                """
-                insert into compute_artifacts
-                (id, attestation_id, name, uri, sha256, bytes, created_at)
-                values
-                (:id, :attestation_id, :name, :uri, :sha256, :bytes, :created_at)
-                """
-            ),
-            {
-                "id": uuid.uuid4(),
-                "attestation_id": attestation_id,
-                "name": a.name,
-                "uri": a.uri,
-                "sha256": a.sha256,
-                "bytes": a.bytes,
-                "created_at": now,
-            },
-        )
-
-    step_run.status = body.outcome
-    step_run.ended_at = now
-
-    if body.outcome == "FAIL":
-        dag_run.status = "error"
-        dag_run.ended_at = now
-
-    db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return {"ok": True, "step_run_id": str(step_run_id), "new_status": body.outcome}
 

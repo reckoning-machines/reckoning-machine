@@ -48,6 +48,20 @@ Example:
 
 Both must return success before accepting traffic.
 
+## Paused runs and operator intervention
+
+A run may enter a `waiting` state if execution reaches an external compute step.
+
+This is expected behavior.
+
+In this state:
+- execution is paused deterministically
+- no downstream steps will execute
+- the service remains healthy
+
+Execution resumes only after an operator submits an attestation
+recording the outcome and artifacts of the external computation.
+
 ---
 
 ## Common failure modes
@@ -59,7 +73,12 @@ Migration failure
 Confirm DATABASE_URL and driver availability.
 
 LLM failure  
-System falls back to stub execution if configured.
+The affected step fails and execution halts. Downstream steps do not execute.
+
+External compute pause  
+A run may pause in `waiting` state pending operator attestation.
+This is not a failure condition.
+
 
 ---
 
@@ -77,6 +96,7 @@ Backups should be taken at the database level.
 
 The service is stateless.
 Restarting the process does not affect in-progress data.
+Paused runs remain in `waiting` state until resumed.
 
 ---
 

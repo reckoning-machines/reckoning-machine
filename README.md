@@ -48,7 +48,7 @@ Manifest
 An explicit DAG of tasks with declared dependencies.
 
 Run  
-One execution of a manifest. Runs are immutable.
+One execution of a manifest. Runs are immutable and may pause awaiting external attestation.
 
 Decision Rationale  
 Structured JSON explanation returned by the model. Stored for interpretability only.
@@ -58,6 +58,28 @@ Deterministic rules enforced by the system. Authoritative.
 
 Canonical Output  
 Validated JSON produced by a task. The only payload allowed to chain forward.
+
+## External Compute and Attestation
+
+In addition to LLM-based tasks, a manifest step may represent **external deterministic compute**.
+
+Examples include:
+- spreadsheet models
+- batch scripts
+- offline or manual procedures
+
+These steps are declared explicitly and treated as execution boundaries.
+
+When execution reaches an external compute step:
+- the run transitions to a waiting state
+- execution halts deterministically
+- no downstream steps execute
+
+Execution resumes only after an operator submits an attestation recording:
+- the outcome (success or failure)
+- the artifacts produced
+
+This ensures that all external work is explicit, auditable, and replayable.
 
 ---
 
@@ -80,6 +102,8 @@ Execution planes:
 
 This project is under active development.
 Execution semantics are stable; APIs may evolve.
+
+For detailed execution semantics, invariants, and failure modes, see `ARCHITECTURE.md`.
 
 ---
 

@@ -71,22 +71,34 @@ def update_manifest(db: Session, manifest_id: UUID, manifest_in: schemas.Manifes
     return manifest
 
 # --- Manifest Steps (replace all steps for manifest) ---
-def replace_manifest_steps(db: Session, manifest_id: UUID, steps_in: List[schemas.ManifestStepCreate]) -> List[models.ManifestStep]:
+def replace_manifest_steps(
+    db: Session,
+    manifest_id: UUID,
+    steps_in: List[schemas.ManifestStepCreate],
+) -> List[models.ManifestStep]:
     manifest = db.get(models.Manifest, manifest_id)
     if not manifest:
         return []
-    # Delete existing steps
-    db.query(models.ManifestStep).filter(models.ManifestStep.manifest_id == manifest_id).delete()
-    # Insert new steps
-    steps = []
-    for order, step_in in enumerate(steps_in):
-        data = step_in.dict()
-        data['manifest_id'] = manifest_id
-        data['order_index'] = data.get('order_index') if data.get('order_index') is not None else order
-        step = models.ManifestStep(**data)
-        db.add(step)
-        steps.append(step)
-    db.commit()
-    for s in steps:
-        db.refresh(s)
-    return steps
+
+    try:
+        db.query(models.ManifestStep).filter(models.ManifestStep.manifest_id == manifest_id).delete()
+
+        steps: List[models.ManifestStep] = []
+        for order, step_in in enumerate(steps_in):
+            data = step_in.dict()
+            data["manifest_id"] = manifest_id
+            data["order_index"] = data.get("order_index") if data.get("order_index") is not None else order
+            step = models.ManifestStep(**data)
+            db.add(step)
+            steps.append(step)
+
+        db.commit()
+
+        for s in steps:
+            db.refresh(s)
+
+        return steps
+
+    except Exception:
+        db.rollback()
+        raise

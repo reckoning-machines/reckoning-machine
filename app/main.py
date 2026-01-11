@@ -50,25 +50,10 @@ def db_ping():
 # -----------------------------
 # API routers
 # -----------------------------
-# These imports are intentionally inside try blocks so the server
-# can still boot even if a stage is mid-flight.
-try:
-    from app.api.tasks import router as tasks_router
+from app.api.tasks import router as tasks_router
+from app.api.manifests import router as manifests_router
+from app.api.runs import router as runs_router
 
-    app.include_router(tasks_router, prefix="/api")
-except Exception:
-    pass
-
-try:
-    from app.api.manifests import router as manifests_router
-
-    app.include_router(manifests_router, prefix="/api")
-except Exception:
-    pass
-
-try:
-    from app.api.runs import router as runs_router
-
-    app.include_router(runs_router, prefix="/api")
-except Exception:
-    pass
+app.include_router(tasks_router, prefix="/api")
+app.include_router(manifests_router, prefix="/api")
+app.include_router(runs_router, prefix="/api")
